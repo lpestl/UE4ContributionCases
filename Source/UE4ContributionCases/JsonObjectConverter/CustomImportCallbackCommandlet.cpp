@@ -17,7 +17,7 @@ namespace FCustomCallbacksDemoLocal
 	static const FString CustomAdditionalPropertyName = TEXT("SubObjectRef");
 
 	// FPackageName::SplitFullObjectPath(StringValue, ClassName, PackagePath, ObjectName, SubObjectName);
-	// https://github.com/EpicGames/UnrealEngine/pull/7371
+	// TODO: https://github.com/EpicGames/UnrealEngine/pull/7371
 	void CustomSplitFullObjectPath(const FString& InFullObjectPath, FString& OutClassName, FString& OutPackageName, FString& OutObjectName, FString& OutSubObjectName)
 	{
 		FString Sanitized = InFullObjectPath.TrimStartAndEnd();
