@@ -1,0 +1,15 @@
+[
+	{
+		"AssetRef": "SomeDataAsset'/Game/ExamplesAssets/CustomDataAssets/DA_SomeDataAsset.DA_SomeDataAsset'",
+		"ArrayStructWithInstancedObject": [
+			{
+				"objectForInstancing":
+				{
+					"SubObjectRef": "SecondTypeForInstancing'/Game/ExamplesAssets/CustomDataAssets/DA_SomeDataAsset.DA_SomeDataAsset:SecondTypeForInstancing_0'",
+					"SomeIntValue": 0
+				}
+			}
+		],
+		"NativeClass": "Class'/Script/UE4ContributionCases.SomeDataAsset'"
+	}
+]

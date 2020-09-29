@@ -1,0 +1,8 @@
+[
+	{
+		"AssetRef": "SomePrimaryDataAsset'/Game/ExamplesAssets/CustomDataAssets/DA_SomePrimaryDataAsset.DA_SomePrimaryDataAsset'",
+		"GameplayDataAsset": "SomeDataAsset'/Game/ExamplesAssets/CustomDataAssets/DA_SomeDataAsset.DA_SomeDataAsset'",
+		"AssetBundleData": "",
+		"NativeClass": "Class'/Script/UE4ContributionCases.SomePrimaryDataAsset'"
+	}
+]
