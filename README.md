@@ -19,4 +19,4 @@ Where:
 1. [Incorrect function result FPackageName::SplitFullObjectPath](Source/UE4ContributionCases/SplitFullObjectPathCase/README.md):
     * pull request: https://github.com/EpicGames/UnrealEngine/pull/7371
 1. [Need for CustomImportCallback in the implementation of FJsonObjectConverter](Source/UE4ContributionCases/JsonObjectConverter/README.md):
-    * TODO:
+    * pull request: https://github.com/EpicGames/UnrealEngine/pull/7372
