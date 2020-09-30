@@ -16,5 +16,5 @@ Where:
 
 ## Cases ##
 
-1. [Incorrect function result FPackageName::SplitFullObjectPath](Source\UE4ContributionCases\SplitFullObjectPathCase\README.md)
-1. [Need for CustomImportCallback in the implementation of FJsonObjectConverter](Source\UE4ContributionCases\JsonObjectConverter\README.md)
+1. [Incorrect function result FPackageName::SplitFullObjectPath](Source/UE4ContributionCases/SplitFullObjectPathCase/README.md)
+1. [Need for CustomImportCallback in the implementation of FJsonObjectConverter](Source/UE4ContributionCases/JsonObjectConverter/README.md)
