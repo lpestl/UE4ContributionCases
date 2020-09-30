@@ -1,0 +1,1 @@
+# Need for CustomImportCallback in the implementation of FJsonObjectConverter #
