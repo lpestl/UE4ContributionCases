@@ -177,15 +177,15 @@ void UCustomImportCallbackCommandlet::ImportCase(const FString& InReferenceStrin
 			UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Property '%s' not found in class %s. Property scepped."), *JsonObjectItemPair.Key, *Object->GetClass()->GetName());
 
 		/* TODO: Uncomment next lines when CustomImportCallback if it is available in FJsonObjectConverter::JsonValueToUProperty*/
-		FJsonObjectConverter::CustomImportCallback CustomCB;
-		CustomCB.BindStatic(JsonToObjectCallback);
+		// FJsonObjectConverter::CustomImportCallback CustomCB;
+		// CustomCB.BindStatic(JsonToObjectCallback);
 		FJsonObjectConverter::JsonValueToUProperty(
 			JsonObjectItemPair.Value,
 			Property,
 			Property->ContainerPtrToValuePtr<void>(Object),
 			0,
 			0
-			/* TODO: Uncomment next arg if it is available in FJsonObjectConverter::JsonValueToUProperty*/ , &CustomCB
+			// /* TODO: Uncomment next arg if it is available in FJsonObjectConverter::JsonValueToUProperty*/ , &CustomCB
 			);
 	}
 
@@ -387,15 +387,15 @@ namespace FCustomCallbacksDemoLocal
 			}
 
 			/* TODO: Uncomment next lines when CustomImportCallback if it is available in FJsonObjectConverter::JsonValueToUProperty*/
-			FJsonObjectConverter::CustomImportCallback CustomCB;
-			CustomCB.BindStatic(JsonToObjectCallback);
+			// FJsonObjectConverter::CustomImportCallback CustomCB;
+			// CustomCB.BindStatic(JsonToObjectCallback);
 			FJsonObjectConverter::JsonValueToUProperty(
 				PropertyJsonValuePair.Value,
 				SubObjectProperty,
 				SubObjectProperty->ContainerPtrToValuePtr<void>(SubObject),
 				0,
 				0
-				/* TODO: Uncomment next arg if it is available in FJsonObjectConverter::JsonValueToUProperty*/ , &CustomCB
+				// /* TODO: Uncomment next arg if it is available in FJsonObjectConverter::JsonValueToUProperty*/ , &CustomCB
 				);			
 		}
 
