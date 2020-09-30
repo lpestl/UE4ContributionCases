@@ -107,3 +107,116 @@ But for example, a similar function for import has the following description:
     }
 ```
 
+## Demonstration of the need for this feature ##
+
+I created a special repository to demonstrate cases in which this feature is VERY needed: https://github.com/lpestl/UE4ContributionCases
+
+For a simple and step-by-step reproduction of the problem, there is a special Commandlet class ([CustomImportCallbackCommandlet.h](Source/UE4ContributionCases/JsonObjectConverter/CustomImportCallbackCommandlet.h) and [CustomImportCallbackCommandlet.cpp](Source/UE4ContributionCases/JsonObjectConverter/CustomImportCallbackCommandlet.cpp)), by running which you can see the output in the log, and the source code file contains a detailed description of the steps.
+
+In the above example, after exporting data from DataAsset to Json using `CustomExportCallback`, I then try to restore the data in DataAsset by importing a Json file. But without the presence of `CustomImportCallback`, the data is lost...
+
+Output to the console before we add the ability to define CustomImportCallback:
+```
+[2020.09.30-09.19.56:580][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => Params: ' -skipcompile -run=CustomImportCallback'
+[2020.09.30-09.19.56:612][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => Step 1: Export DA_SomeDataAsset to CustomExportData.json using FJsonObjectConverter::CustomExportCallback.
+[2020.09.30-09.19.56:631][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomExportCallback started ---
+[2020.09.30-09.19.56:644][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomExportCallback succesfull finished ---
+[2020.09.30-09.19.56:675][  0]LogDemoJsonCallback: Display: Export custom result:
+{
+	"ArrayStructWithInstancedObject": [
+		{
+			"objectForInstancing":
+			{
+				"SubObjectRef": "FirstTypeForInstancing'/Game/ExamplesAssets/CustomDataAssets/DA_SomeDataAsset.DA_SomeDataAsset:FirstTypeForInstancing_0'",
+				"SomeString": "String in property"
+			}
+		}
+	],
+	"NativeClass": "Class'/Script/UE4ContributionCases.SomeDataAsset'"
+}
+[2020.09.30-09.19.56:712][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => Step 2: Rewrite the instanced subobject from the property in DA_SomeDataAsset to demonstrate.
+[2020.09.30-09.19.56:719][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => Property 'ArrayStructWithInstancedObject' rewrited on empty Array.
+[2020.09.30-09.19.56:738][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => After changed property and save package, DataAsset content:
+[2020.09.30-09.19.56:784][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomExportCallback started ---
+[2020.09.30-09.19.56:790][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomExportCallback succesfull finished ---
+[2020.09.30-09.19.56:829][  0]LogDemoJsonCallback: Display: Export custom result:
+{
+	"ArrayStructWithInstancedObject": [],
+	"NativeClass": "Class'/Script/UE4ContributionCases.SomeDataAsset'"
+}
+[2020.09.30-09.19.56:844][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => Step 3: Let's try to recover the DA_SomeDataAsset from the CustomExportData.json file
+[2020.09.30-09.19.56:851][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomImportCallback started ---
+[2020.09.30-09.19.56:877][  0]LogDemoJsonCallback: Display: Succesful save DA_SomeDataAsset after importing data from json file
+[2020.09.30-09.19.56:898][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomImportCallback succesfull finished ---
+[2020.09.30-09.19.56:902][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => After import (an attempt to restore the original data).
+[2020.09.30-09.19.56:911][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomExportCallback started ---
+[2020.09.30-09.19.56:916][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomExportCallback succesfull finished ---
+[2020.09.30-09.19.56:929][  0]LogDemoJsonCallback: Display: Export custom result:
+{
+	"ArrayStructWithInstancedObject": [
+		{
+			"objectForInstancing": "SomeClassForInstancedProperties'/Engine/Transient.SomeClassForInstancedProperties_0'"
+		}
+	],
+	"NativeClass": "Class'/Script/UE4ContributionCases.SomeDataAsset'"
+}
+[2020.09.30-09.19.56:942][  0]LogInit: Display: 
+[2020.09.30-09.19.56:943][  0]LogInit: Display: Success - 0 error(s), 0 warning(s)
+[2020.09.30-09.19.56:946][  0]LogInit: Display: 
+Execution of commandlet took:  0.37 seconds
+```
+
+Output to the console after I added the changes suggested in this pull request to the engine code:
+```
+[2020.09.30-11.31.04:241][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => Params: ' -skipcompile -run=CustomImportCallback'
+[2020.09.30-11.31.04:252][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => Step 1: Export DA_SomeDataAsset to CustomExportData.json using FJsonObjectConverter::CustomExportCallback.
+[2020.09.30-11.31.04:264][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomExportCallback started ---
+[2020.09.30-11.31.04:272][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomExportCallback succesfull finished ---
+[2020.09.30-11.31.04:286][  0]LogDemoJsonCallback: Display: Export custom result:
+{
+	"ArrayStructWithInstancedObject": [
+		{
+			"objectForInstancing":
+			{
+				"SubObjectRef": "FirstTypeForInstancing'/Game/ExamplesAssets/CustomDataAssets/DA_SomeDataAsset.DA_SomeDataAsset:FirstTypeForInstancing_0'",
+				"SomeString": "String in property"
+			}
+		}
+	],
+	"NativeClass": "Class'/Script/UE4ContributionCases.SomeDataAsset'"
+}
+[2020.09.30-11.31.04:328][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => Step 2: Rewrite the instanced subobject from the property in DA_SomeDataAsset to demonstrate.
+[2020.09.30-11.31.04:425][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => Property 'ArrayStructWithInstancedObject' rewrited on empty Array.
+[2020.09.30-11.31.04:472][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => After changed property and save package, DataAsset content:
+[2020.09.30-11.31.04:514][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomExportCallback started ---
+[2020.09.30-11.31.04:563][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomExportCallback succesfull finished ---
+[2020.09.30-11.31.04:568][  0]LogDemoJsonCallback: Display: Export custom result:
+{
+	"ArrayStructWithInstancedObject": [],
+	"NativeClass": "Class'/Script/UE4ContributionCases.SomeDataAsset'"
+}
+[2020.09.30-11.31.04:600][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => Step 3: Let's try to recover the DA_SomeDataAsset from the CustomExportData.json file
+[2020.09.30-11.31.04:656][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomImportCallback started ---
+[2020.09.30-11.31.04:662][  0]LogDemoJsonCallback: Display: Succesful save DA_SomeDataAsset after importing data from json file
+[2020.09.30-11.31.04:698][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomImportCallback succesfull finished ---
+[2020.09.30-11.31.04:717][  0]LogDemoJsonCallback: Display: UCustomImportCallbackCommandlet::Main => After import (an attempt to restore the original data).
+[2020.09.30-11.31.04:726][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomExportCallback started ---
+[2020.09.30-11.31.04:733][  0]LogDemoJsonCallback: Display: --- Demo for FJsonObjectConverter::CustomExportCallback succesfull finished ---
+[2020.09.30-11.31.04:752][  0]LogDemoJsonCallback: Display: Export custom result:
+{
+	"ArrayStructWithInstancedObject": [
+		{
+			"objectForInstancing":
+			{
+				"SubObjectRef": "FirstTypeForInstancing'/Game/ExamplesAssets/CustomDataAssets/DA_SomeDataAsset.DA_SomeDataAsset:FirstTypeForInstancing_1'",
+				"SomeString": "String in property"
+			}
+		}
+	],
+	"NativeClass": "Class'/Script/UE4ContributionCases.SomeDataAsset'"
+}
+[2020.09.30-11.31.04:789][  0]LogInit: Display: 
+[2020.09.30-11.31.04:816][  0]LogInit: Display: Success - 0 error(s), 0 warning(s)
+[2020.09.30-11.31.04:843][  0]LogInit: Display: 
+Execution of commandlet took:  0.60 seconds
+```
