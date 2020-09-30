@@ -27,6 +27,9 @@ namespace FCustomCallbacksDemoLocal
 
 	// Implementation for CustomExportCallback (Example of use)
 	TSharedPtr<FJsonValue> ObjectJsonCallback(FProperty* Property, const void* Value);
+
+	// Implementation for my CustomImportCallback (Example of use)
+	bool JsonToObjectCallback(const TSharedPtr<FJsonValue>& JsonValue, FProperty* Property , void* OutValue);
 }
 
 int32 UCustomImportCallbackCommandlet::Main(const FString& Params)
@@ -174,15 +177,15 @@ void UCustomImportCallbackCommandlet::ImportCase(const FString& InReferenceStrin
 			UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Property '%s' not found in class %s. Property scepped."), *JsonObjectItemPair.Key, *Object->GetClass()->GetName());
 
 		/* TODO: Uncomment next lines when CustomImportCallback if it is available in FJsonObjectConverter::JsonValueToUProperty*/
-		// FJsonObjectConverter::CustomImportCallback CustomCB;
-		// CustomCB.BindStatic(JsonToObjectCallback);
+		FJsonObjectConverter::CustomImportCallback CustomCB;
+		CustomCB.BindStatic(JsonToObjectCallback);
 		FJsonObjectConverter::JsonValueToUProperty(
 			JsonObjectItemPair.Value,
 			Property,
 			Property->ContainerPtrToValuePtr<void>(Object),
 			0,
 			0
-			/* TODO: Uncomment next arg if it is available in FJsonObjectConverter::JsonValueToUProperty*/ /*, &CustomCB*/
+			/* TODO: Uncomment next arg if it is available in FJsonObjectConverter::JsonValueToUProperty*/ , &CustomCB
 			);
 	}
 
@@ -319,5 +322,90 @@ namespace FCustomCallbacksDemoLocal
 
 		// invalid
 		return TSharedPtr<FJsonValue>();
+	}
+
+	// Implementation for my CustomImportCallback (Example of use)
+	bool JsonToObjectCallback(const TSharedPtr<FJsonValue>& JsonValue, FProperty* Property , void* OutValue)
+	{
+		const TSharedPtr<FJsonObject>* JsonObject;
+		if (!JsonValue->TryGetObject(JsonObject))
+			// By default, false, means not handled
+			return false;
+		
+		FString SubObjectRef;
+		if (!(*JsonObject)->TryGetStringField(CustomAdditionalPropertyName, SubObjectRef))
+			// JsonObject don`t have custom sub object (instanced object),
+			// so the import is not finished and you need to continue the import chain
+			// False - means not handled
+			return false;
+		
+		
+		// Detect instanced object
+		FString ClassName;
+		FString PackagePath;
+		FString ObjectName;
+		FString SubObjectName;
+		
+		// TODO: https://github.com/EpicGames/UnrealEngine/pull/7371
+		// FPackageName::SplitFullObjectPath(StringValue, ClassName, PackagePath, ObjectName, SubObjectName);
+		CustomSplitFullObjectPath(SubObjectRef, ClassName, PackagePath, ObjectName, SubObjectName);
+
+		if (SubObjectName.IsEmpty())
+			// The textual representation of a link to a sub-object does not contain its name.
+			// This may mean that this is not a link to an instantiated object (sub object),
+			// but to a third-party object from another package
+			// False - means not handled
+			return false;
+
+		UClass* ObjectClass = FindObject<UClass>(ANY_PACKAGE, *ClassName);
+		if (ObjectClass == nullptr)
+		{
+			UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Class '%s' not found."), *ClassName);
+			return false;
+		}
+
+		const FString OuterObjectPath = FString::Printf(TEXT("%s.%s"), *PackagePath, *ObjectName);
+		UObject* OuterObject = LoadObject<UObject>(nullptr, *OuterObjectPath);
+		UObject* SubObject = NewObject<UObject>(OuterObject, ObjectClass);
+		if (SubObject == nullptr)
+		{
+			UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Sub Object '%s' for object '%s' was not created."), *SubObjectName, *OuterObjectPath);
+			return false;
+		}
+		
+		// Let's go through the properties of the sub-object recursively to restore them.
+		for (auto && PropertyJsonValuePair : (*JsonObject)->Values)
+		{
+			if (PropertyJsonValuePair.Key == CustomAdditionalPropertyName)
+				continue;
+		
+			FProperty* SubObjectProperty = ObjectClass->FindPropertyByName(*PropertyJsonValuePair.Key);
+			if (!SubObjectProperty)
+			{
+				UE_LOG(LogDemoJsonCallback, Error, TEXT("Property %s for object class %s not found."), *PropertyJsonValuePair.Key, *ObjectClass->GetName());
+				continue;
+			}
+
+			/* TODO: Uncomment next lines when CustomImportCallback if it is available in FJsonObjectConverter::JsonValueToUProperty*/
+			FJsonObjectConverter::CustomImportCallback CustomCB;
+			CustomCB.BindStatic(JsonToObjectCallback);
+			FJsonObjectConverter::JsonValueToUProperty(
+				PropertyJsonValuePair.Value,
+				SubObjectProperty,
+				SubObjectProperty->ContainerPtrToValuePtr<void>(SubObject),
+				0,
+				0
+				/* TODO: Uncomment next arg if it is available in FJsonObjectConverter::JsonValueToUProperty*/ , &CustomCB
+				);			
+		}
+
+		// After the properties for the sub object are restored, you need to write a link to this object in the current property
+		if (FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property))
+			ObjectProperty->SetObjectPropertyValue(OutValue, SubObject);
+		
+		// All the steps have been passed, the json object has been converted to an object and saved to a property,
+		// which means that for this stage the processing is over and there is no point in continuing the import chain for this property
+		// True - means to handled
+		return true;
 	}
 }
