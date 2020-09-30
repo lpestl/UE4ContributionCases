@@ -1,9 +1,11 @@
 ﻿#include "CustomImportCallbackCommandlet.h"
 
-
+#include "FileHelpers.h"
 #include "JsonObjectConverter.h"
+#include "PackageTools.h"
 #include "Dom/JsonObject.h"
 #include "Misc/FileHelper.h"
+#include "UE4ContributionCases/SplitFullObjectPathCase/SomeDataAsset.h"
 #include "UObject/ConstructorHelpers.h"
 
 UCustomImportCallbackCommandlet::UCustomImportCallbackCommandlet(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
@@ -16,6 +18,222 @@ namespace FCustomCallbacksDemoLocal
 	// Additional custom property name for custom json data
 	static const FString CustomAdditionalPropertyName = TEXT("SubObjectRef");
 
+	// Load data from json file
+	TSharedPtr<FJsonValue> LoadJsonFile(FString const& FilePath);
+	
+	// FPackageName::SplitFullObjectPath(StringValue, ClassName, PackagePath, ObjectName, SubObjectName);
+	// TODO: https://github.com/EpicGames/UnrealEngine/pull/7371
+	void CustomSplitFullObjectPath(const FString& InFullObjectPath, FString& OutClassName, FString& OutPackageName, FString& OutObjectName, FString& OutSubObjectName);
+
+	// Implementation for CustomExportCallback (Example of use)
+	TSharedPtr<FJsonValue> ObjectJsonCallback(FProperty* Property, const void* Value);
+}
+
+int32 UCustomImportCallbackCommandlet::Main(const FString& Params)
+{
+	UE_LOG(LogDemoJsonCallback, Display, TEXT("UCustomImportCallbackCommandlet::Main => Params: '%s'"), *Params);
+	
+	// To demonstrate a specific case, export to json and import from json are well reproduced,
+	// the reference of this specific date asset:
+	// SomeDataAsset'/Game/ExamplesAssets/CustomDataAssets/DA_SomeDataAsset.DA_SomeDataAsset'
+	const FString ReferenceString("SomeDataAsset'/Game/ExamplesAssets/CustomDataAssets/DA_SomeDataAsset.DA_SomeDataAsset'");
+		
+	// Save exported custom data into "%ProjectSavedDir%/CustomExportData.json" file as example  
+	const FString OutputFilePath(FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("CustomExportData.json")));
+
+	// Step 1
+	// Demo for CustomExportCallback
+	{
+		UE_LOG(LogDemoJsonCallback, Display, TEXT("UCustomImportCallbackCommandlet::Main => Step 1: Export DA_SomeDataAsset to CustomExportData.json using FJsonObjectConverter::CustomExportCallback."));
+		const TSharedPtr<FJsonObject> OutputJson = ExportCase(ReferenceString);
+		// Save to temp file
+		SaveToJsonFile(OutputJson, OutputFilePath);
+	}
+
+	// Step 2
+	// Rewrite the instanced subobject from the property in DA_SomeDataAsset to demonstrate
+	// that the current implementation of function FJsonObjectConverter::JsonValueToUProperty (which is used in the ImportCase function)
+	// inside the engine does not work as expected without adding CustomImportCallback
+	{
+		UE_LOG(LogDemoJsonCallback, Display, TEXT("UCustomImportCallbackCommandlet::Main => Step 2: Rewrite the instanced subobject from the property in DA_SomeDataAsset to demonstrate."));
+		// Load object
+		FString ObjectPath = ReferenceString;
+		ConstructorHelpers::StripObjectClass(ObjectPath);
+		USomeDataAsset* SomeDataAsset = LoadObject<USomeDataAsset>(nullptr, *ObjectPath);
+		if (!SomeDataAsset)
+			UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Unable to load object '%s'."), *ObjectPath);
+		// Change property data 
+		SomeDataAsset->ArrayStructWithInstancedObject = TArray<FSomeStructWithInstancedProperty>();
+		// Save changed DataAsset
+		if (!UEditorLoadingAndSavingUtils::SavePackages({UPackageTools::LoadPackage(ObjectPath)}, false))
+			UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Unable to save package %s."), *ObjectPath)
+		UE_LOG(LogDemoJsonCallback, Display, TEXT("UCustomImportCallbackCommandlet::Main => Property 'ArrayStructWithInstancedObject' rewrited on empty Array."));
+
+		// Print to console current Asset data
+		UE_LOG(LogDemoJsonCallback, Display, TEXT("UCustomImportCallbackCommandlet::Main => After changed property and save package, DataAsset content:"));
+		const TSharedPtr<FJsonObject> ChangedJson = ExportCase(ReferenceString);
+		SerializeJson(ChangedJson);
+	}
+
+	// Step 3
+	// Demonstration of the need CustomImportCallback
+	// NOTE: I am surprised that there is such a callback in the FJsonObjectConverter::UPropertyToJsonValue function,
+	// but in the case of FJsonObjectConverter::JsonValueToUProperty, there is no way to set it.
+	// I suggest to introduce this functionality. I am preparing a pull request into engine
+	{
+		UE_LOG(LogDemoJsonCallback, Display, TEXT("UCustomImportCallbackCommandlet::Main => Step 3: Let's try to recover the DA_SomeDataAsset from the CustomExportData.json file"));
+		ImportCase(ReferenceString, OutputFilePath);
+
+		// Print to console current Asset data
+		UE_LOG(LogDemoJsonCallback, Display, TEXT("UCustomImportCallbackCommandlet::Main => After import (an attempt to restore the original data)."));
+		const TSharedPtr<FJsonObject> AfterImportJson = ExportCase(ReferenceString);
+		SerializeJson(AfterImportJson);
+	}
+
+	// Summary:
+	// Without the ability to define my CustomImportCallback, I still have to write additional code, otherwise, I will lose some of the data in the properties that are marked as instantiated.
+    // If CustomImportCallback is in the engine code - this situation can be avoided and successfully restore all properties of the object.
+    // I will prepare a pull request to the engine code with this functionality.
+	
+	return 0;
+}
+
+TSharedPtr<FJsonObject> UCustomImportCallbackCommandlet::ExportCase(const FString& InReferenceString)
+{
+	using namespace FCustomCallbacksDemoLocal;
+	
+	UE_LOG(LogDemoJsonCallback, Display, TEXT("--- Demo for FJsonObjectConverter::CustomExportCallback started ---"));
+
+	// Make a JsonObject to collect textual representation of object property values
+	TSharedPtr<FJsonObject> JsonAssetObject = MakeShared<FJsonObject>();
+	// Get asset package
+	FString PackagePath = InReferenceString;
+	ConstructorHelpers::StripObjectClass(PackagePath);
+	
+	// Check package exist
+	FString OutPackageFileName;
+	const bool bIsExist = FPackageName::DoesPackageExist(*PackagePath, nullptr, &OutPackageFileName);
+	if (!bIsExist)
+		UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Package '%s' does not exist"), *PackagePath);
+
+	// Load object by path 
+	UObject* Object = LoadObject<UObject>(nullptr, *PackagePath);
+	if (!Object)
+		UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Unable to load object '%s'."), *PackagePath);
+
+	// Iterate by properties
+	UClass* ObjectClass = Object->GetClass();
+	for (TFieldIterator<FProperty> Prop(ObjectClass); Prop; ++Prop)
+	{
+		// Define a custom callback to handle specific property values
+		FJsonObjectConverter::CustomExportCallback CustomCB;
+		CustomCB.BindStatic(ObjectJsonCallback);
+		// Convert property to JsonValue
+		void const* ClassPropertyData = (*Prop)->ContainerPtrToValuePtr<void>(Object);
+		const TSharedPtr<FJsonValue> JsonValue = FJsonObjectConverter::UPropertyToJsonValue(*Prop, ClassPropertyData, 0, 0, &CustomCB);
+		// And collect it into JsonObject
+		JsonAssetObject->SetField((*Prop)->GetNameCPP(), JsonValue);
+	}
+
+	UE_LOG(LogDemoJsonCallback, Display, TEXT("--- Demo for FJsonObjectConverter::CustomExportCallback succesfull finished ---"));
+	return JsonAssetObject;	
+}
+
+void UCustomImportCallbackCommandlet::ImportCase(const FString& InReferenceString, const FString& InOpenFilePath)
+{
+	using namespace FCustomCallbacksDemoLocal;
+	
+	UE_LOG(LogDemoJsonCallback, Display, TEXT("--- Demo for FJsonObjectConverter::CustomImportCallback started ---"));
+
+	// Get asset package
+	FString PackagePath = InReferenceString;
+	ConstructorHelpers::StripObjectClass(PackagePath);
+	
+	// Check package exist
+	FString OutPackageFileName;
+	const bool bIsExist = FPackageName::DoesPackageExist(*PackagePath, nullptr, &OutPackageFileName);
+	if (!bIsExist)
+		UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Package '%s' does not exist"), *PackagePath);
+
+	// Load object by path 
+	UObject* Object = LoadObject<UObject>(nullptr, *PackagePath);
+	if (!Object)
+		UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Unable to load object '%s'."), *PackagePath);
+
+	// Load data from json file
+	TSharedPtr<FJsonValue> JsonFile = LoadJsonFile(InOpenFilePath);
+	TSharedPtr<FJsonObject> const* JsonObjectContent;
+	if (!JsonFile->TryGetObject(JsonObjectContent))
+		UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Unexpected file content '%s'."), *InOpenFilePath);
+
+	// Parse properties
+	for (TPair<FString, TSharedPtr<FJsonValue>> const& JsonObjectItemPair : (*JsonObjectContent)->Values)
+	{
+		FProperty* Property = Object->GetClass()->FindPropertyByName(*JsonObjectItemPair.Key);
+		if (Property == nullptr)
+			UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Property '%s' not found in class %s. Property scepped."), *JsonObjectItemPair.Key, *Object->GetClass()->GetName());
+
+		/* TODO: Uncomment next lines when CustomImportCallback if it is available in FJsonObjectConverter::JsonValueToUProperty*/
+		// FJsonObjectConverter::CustomImportCallback CustomCB;
+		// CustomCB.BindStatic(JsonToObjectCallback);
+		FJsonObjectConverter::JsonValueToUProperty(
+			JsonObjectItemPair.Value,
+			Property,
+			Property->ContainerPtrToValuePtr<void>(Object),
+			0,
+			0
+			/* TODO: Uncomment next arg if it is available in FJsonObjectConverter::JsonValueToUProperty*/ /*, &CustomCB*/
+			);
+	}
+
+	// Save changed DataAsset
+	if (!UEditorLoadingAndSavingUtils::SavePackages({UPackageTools::LoadPackage(PackagePath)}, false))
+		UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Unable to save package %s."), *PackagePath)
+	
+	UE_LOG(LogDemoJsonCallback, Display, TEXT("Succesful save DA_SomeDataAsset after importing data from json file"));
+	
+	UE_LOG(LogDemoJsonCallback, Display, TEXT("--- Demo for FJsonObjectConverter::CustomImportCallback succesfull finished ---"));
+}
+
+void UCustomImportCallbackCommandlet::SaveToJsonFile(const TSharedPtr<FJsonObject> InJsonObject, const FString& InSaveFilePath)
+{
+	const FString SerializedJson = SerializeJson(InJsonObject);	
+	// Save to file
+	if (!FFileHelper::SaveStringToFile(SerializedJson, *InSaveFilePath))
+		UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Unable to save file '%s'."), *InSaveFilePath);
+}
+
+FString UCustomImportCallbackCommandlet::SerializeJson(const TSharedPtr<FJsonObject> InJsonObject)
+{
+	// Serialize
+	FString SerializedJson;
+	TSharedRef<TJsonWriter<>> JsonWriter = TJsonWriterFactory<>::Create(&SerializedJson);
+	FJsonSerializer::Serialize(InJsonObject.ToSharedRef(), TJsonWriterFactory<>::Create(&SerializedJson));
+	
+	UE_LOG(LogDemoJsonCallback, Display, TEXT("Export custom result:\n%s"), *SerializedJson);
+
+	return SerializedJson;
+}
+
+namespace FCustomCallbacksDemoLocal
+{
+	// Load data from json file
+	TSharedPtr<FJsonValue> LoadJsonFile(FString const& FilePath)
+	{
+		// load text file
+		FString FileText;
+		if (!FFileHelper::LoadFileToString(FileText, *FilePath))
+			return nullptr;
+
+		// parse as json
+		const TSharedRef<TJsonReader<>> JsonReader = TJsonReaderFactory<>::Create(FileText);
+		TSharedPtr<FJsonValue> JsonFile;
+		if (!FJsonSerializer::Deserialize(JsonReader, JsonFile))
+			return nullptr;
+
+		return JsonFile;
+	}
+	
 	// FPackageName::SplitFullObjectPath(StringValue, ClassName, PackagePath, ObjectName, SubObjectName);
 	// TODO: https://github.com/EpicGames/UnrealEngine/pull/7371
 	void CustomSplitFullObjectPath(const FString& InFullObjectPath, FString& OutClassName, FString& OutPackageName, FString& OutObjectName, FString& OutSubObjectName)
@@ -45,7 +263,7 @@ namespace FCustomCallbacksDemoLocal
 		ExtractBeforeDelim('\0', OutSubObjectName);
 	}
 
-	// Implementation for CustomExportCallback
+	// Implementation for CustomExportCallback (Example of use)
 	TSharedPtr<FJsonValue> ObjectJsonCallback(FProperty* Property, const void* Value)
 	{
 		if (FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property))
@@ -103,72 +321,3 @@ namespace FCustomCallbacksDemoLocal
 		return TSharedPtr<FJsonValue>();
 	}
 }
-
-int32 UCustomImportCallbackCommandlet::Main(const FString& Params)
-{
-	UE_LOG(LogDemoJsonCallback, Display, TEXT("UCustomImportCallbackCommandlet::Main => Params: '%s'"), *Params);
-	
-	// To demonstrate a specific case, export to json and import from json are well reproduced,
-	// the reference of this specific date asset:
-	// SomeDataAsset'/Game/ExamplesAssets/CustomDataAssets/DA_SomeDataAsset.DA_SomeDataAsset'
-	const FString ReferenceString("SomeDataAsset'/Game/ExamplesAssets/CustomDataAssets/DA_SomeDataAsset.DA_SomeDataAsset'");
-		
-	// Save exported custom data into "%ProjectSavedDir%/CustomExportData.json" file as example  
-	const FString OutputFilePath(FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("CustomExportData.json")));
-
-	// Demo for CustomExportCallback
-	ExportCase(ReferenceString, OutputFilePath);
-	
-	return 0;
-}
-
-void UCustomImportCallbackCommandlet::ExportCase(const FString& InReferenceString, const FString& InFilePath)
-{
-	using namespace FCustomCallbacksDemoLocal;
-	
-	UE_LOG(LogDemoJsonCallback, Display, TEXT("--- Demo for FJsonObjectConverter::CustomExportCallback started ---"));
-
-	// Make a JsonObject to collect textual representation of object property values
-	TSharedPtr<FJsonObject> JsonAssetObject = MakeShared<FJsonObject>();
-	// Get asset package
-	FString PackagePath = InReferenceString;
-	ConstructorHelpers::StripObjectClass(PackagePath);
-	
-	// Check package exist
-	FString OutPackageFileName;
-	const bool bIsExist = FPackageName::DoesPackageExist(*PackagePath, nullptr, &OutPackageFileName);
-	if (!bIsExist)
-		UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Package '%s' does not exist"), *PackagePath);
-
-	// Load object by path 
-	UObject* Object = LoadObject<UObject>(nullptr, *PackagePath);
-	if (!Object)
-		UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Unable to load object '%s'."), *PackagePath);
-
-	// Iterate by properties
-	UClass* ObjectClass = Object->GetClass();
-	for (TFieldIterator<FProperty> Prop(ObjectClass); Prop; ++Prop)
-	{
-		// Define a custom callback to handle specific property values
-		FJsonObjectConverter::CustomExportCallback CustomCB;
-		CustomCB.BindStatic(ObjectJsonCallback);
-		// Convert property to JsonValue
-		void const* ClassPropertyData = (*Prop)->ContainerPtrToValuePtr<void>(Object);
-		const TSharedPtr<FJsonValue> JsonValue = FJsonObjectConverter::UPropertyToJsonValue(*Prop, ClassPropertyData, 0, 0, &CustomCB);
-		// And collect it into JsonObject
-		JsonAssetObject->SetField((*Prop)->GetNameCPP(), JsonValue);
-	}
-	
-	// Serialize
-	FString SerializedJson;
-	TSharedRef<TJsonWriter<>> JsonWriter = TJsonWriterFactory<>::Create(&SerializedJson);
-	FJsonSerializer::Serialize(JsonAssetObject.ToSharedRef(), TJsonWriterFactory<>::Create(&SerializedJson));
-	
-	if (!FFileHelper::SaveStringToFile(SerializedJson, *InFilePath))
-		UE_LOG(LogDemoJsonCallback, Fatal, TEXT("Unable to save file '%s'."), *InFilePath);
-
-	UE_LOG(LogDemoJsonCallback, Display, TEXT("Export custom result:\n%s"), *SerializedJson);	
-	UE_LOG(LogDemoJsonCallback, Display, TEXT("--- Demo for FJsonObjectConverter::CustomExportCallback succesfull finished ---"));
-}
-
-

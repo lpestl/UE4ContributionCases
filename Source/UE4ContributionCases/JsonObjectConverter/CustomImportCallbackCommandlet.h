@@ -19,7 +19,13 @@ public:
 	
 	virtual int32 Main(const FString& Params) override;
 
-	void ExportCase(const FString& InReferenceString, const FString& InFilePath);
+	TSharedPtr<FJsonObject> ExportCase(const FString& InReferenceString);
+	void ImportCase(const FString& InReferenceString, const FString& InOpenFilePath);
+
+	void SaveToJsonFile(const TSharedPtr<FJsonObject> InJsonObject, const FString& InSaveFilePath);
+	FString SerializeJson(const TSharedPtr<FJsonObject> InJsonObject);
 	
 	GENERATED_BODY()	
 };
+
+
