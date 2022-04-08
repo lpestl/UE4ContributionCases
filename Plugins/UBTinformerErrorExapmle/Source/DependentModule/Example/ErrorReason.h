@@ -7,7 +7,7 @@
 #include "ErrorReason.generated.h"
 
 /**
- * Some class of some object. Must contain macros and include "*.generated.h"
+ * Some class of object. Must contain macros and include "*.generated.h"
  */
 UCLASS()
 class DEPENDENTMODULE_API UErrorReason : public UObject
